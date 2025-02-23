@@ -136,6 +136,35 @@ def googleLogin(driver, constants):
 
     time.sleep(15)  # Wait for the certificate to load and Canva logins to be saved
 
+def emailLogin(driver, constants):
+    driver.get(constants.loginPage)
+    time.sleep(5)
+
+    # find the login with email button
+    loginWithEmail = WebDriverWait(driver, 20).until(
+        EC.element_to_be_clickable((By.XPATH, "//span[contains(text(), 'Continue with email')]"))
+    ).click()
+
+    print ("Clicked on the login with email button")
+
+    # find the email input field which has type text and name email
+    emailField = WebDriverWait(driver, 20).until(   
+        EC.presence_of_element_located((By.XPATH, "//input[@type='text' and @name='email']"))
+    ).send_keys(constants.email + Keys.ENTER)
+
+    otp = input("Enter the OTP: ")
+
+    # find an input with placehoder "Enter code"
+    otpField = WebDriverWait(driver, 20).until(
+        EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Enter code']"))
+    ).send_keys(otp + Keys.ENTER)
+
+    time.sleep(10)
+
+    driver.get(constants.linkToCanvaCertificate)
+
+    return
+
 def fill_and_download(driver, constants):
     time.sleep(15)  # Wait for the certificate to load and Canva logins to be saved
 
@@ -247,7 +276,8 @@ def main():
     env.load_dotenv()
     constants = set_up_constants()
     driver = set_up_driver()
-    googleLogin(driver, constants)
+    # googleLogin(driver, constants)
+    emailLogin(driver,constants)
     fill_and_download(driver, constants)
     driver.quit()
 
