@@ -33,15 +33,13 @@ def set_up_constants():
 
 def set_up_driver():
     # Set the download directory to the current working directory
-    download_dir = str(os.getcwd())  
+    download_dir = os.path.join(os.getcwd(), "downloads")
 
     chrome_options = Options()
     chrome_options.add_argument("--disable-popup-blocking")
 
     # Initialize undetected ChromeDriver with options
-    driver = uc.Chrome(options=chrome_options)
-
-    # Set download behavior using CDP
+    driver = uc.Chrome(options=chrome_options, headless=False,driver_executable_path=None,browser_executable_path=None,)
     params = {"behavior": "allow", "downloadPath": download_dir}
     driver.execute_cdp_cmd("Page.setDownloadBehavior", params)
 
