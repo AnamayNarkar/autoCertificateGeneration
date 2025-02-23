@@ -12,7 +12,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.options import Options
 
 class constants:
-    def __init__(self,email, password, linkToCanvaCertificate, csvFile, elementsToBeFilled):
+    def __init__(self, email, password, linkToCanvaCertificate, csvFile, elementsToBeFilled):
         self.loginPage = "https://canva.com/en_in/login"
         self.email = email
         self.password = password
@@ -34,19 +34,35 @@ def set_up_constants():
 def set_up_driver():
     # Set the download directory to the current working directory
     download_dir = os.path.join(os.getcwd(), "downloads")
+    os.makedirs(download_dir, exist_ok=True)
 
     chrome_options = Options()
     chrome_options.add_argument("--disable-popup-blocking")
 
     # Initialize undetected ChromeDriver with options
-    driver = uc.Chrome(options=chrome_options, headless=False,driver_executable_path=None,browser_executable_path=None,)
+    driver = uc.Chrome(options=chrome_options, headless=False)
+    # Set download behavior using CDP
     params = {"behavior": "allow", "downloadPath": download_dir}
     driver.execute_cdp_cmd("Page.setDownloadBehavior", params)
 
-    return driver
+    return driver, download_dir
+
+def wait_for_download(download_dir, timeout=60):
+    """Waits for the file to be fully downloaded in the specified directory."""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        files = os.listdir(download_dir)
+        if any(file.endswith(".crdownload") for file in files):
+            print("File is still downloading...")
+            time.sleep(2)
+        elif any(file.endswith(".pdf") for file in files):
+            print("File download complete.")
+            return files
+        else:
+            time.sleep(2)
+    raise Exception("Download timed out.")
 
 def googleLogin(driver, constants):
-
     # Navigate to the Canva login page
     driver.get(constants.loginPage)
     time.sleep(10)  # Wait for the page and Cloudflare check
@@ -74,7 +90,6 @@ def googleLogin(driver, constants):
         EC.presence_of_element_located((By.XPATH, "//input[@type='email']"))
     )
     email_field.send_keys(constants.email)
-
     print("Entered email.")
 
     # Click the "Next" button after email entry
@@ -132,38 +147,40 @@ def googleLogin(driver, constants):
     driver.get(constants.linkToCanvaCertificate)
     print("Navigated to the Canva certificate link.")
 
-    time.sleep(15)  # Wait for the certificate to load and Canva logins to be saved
-
 def emailLogin(driver, constants):
     driver.get(constants.loginPage)
     time.sleep(5)
 
-    # find the login with email button
-    loginWithEmail = WebDriverWait(driver, 20).until(
+    # Click the login with email button
+    WebDriverWait(driver, 20).until(
         EC.element_to_be_clickable((By.XPATH, "//span[contains(text(), 'Continue with email')]"))
     ).click()
+    print("Clicked on the login with email button")
 
-    print ("Clicked on the login with email button")
-
-    # find the email input field which has type text and name email
-    emailField = WebDriverWait(driver, 20).until(   
+    # Enter the email address
+    WebDriverWait(driver, 20).until(
         EC.presence_of_element_located((By.XPATH, "//input[@type='text' and @name='email']"))
     ).send_keys(constants.email + Keys.ENTER)
 
-    otp = input("Enter the OTP: ")
+    try:
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Enter code']"))
+        )
+    except Exception as e:
+        print("OTP input field not found. login probably failed.")
+        return
 
-    # find an input with placehoder "Enter code"
-    otpField = WebDriverWait(driver, 20).until(
+    otp = input("Enter the OTP: ")
+    # Enter the OTP code
+    WebDriverWait(driver, 20).until(
         EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Enter code']"))
     ).send_keys(otp + Keys.ENTER)
 
     time.sleep(10)
-
     driver.get(constants.linkToCanvaCertificate)
-
     return
 
-def fill_and_download(driver, constants):
+def fill_and_download(driver, constants, download_dir):
     time.sleep(15)  # Wait for the certificate to load and Canva logins to be saved
 
     # Click the "Apps" button to open the options table for bulk creation
@@ -214,8 +231,9 @@ def fill_and_download(driver, constants):
     with open(constants.csvFile, newline='') as f:
         number_of_rows_in_csv = sum(1 for row in csv.reader(f))
     number_of_rows_in_csv -= 1  # Exclude the header row
-
     print(f"Number of rows in the CSV file: {number_of_rows_in_csv}")
+
+
     designs_text = f"Generate {number_of_rows_in_csv} designs"
     print("The string we are going to search for is: " + designs_text)
 
@@ -226,7 +244,7 @@ def fill_and_download(driver, constants):
     Generate_designs_button.click()
     print(f"Clicked the {designs_text} button.")
 
-    time.sleep(15)  # Wait for the designs to be generated
+    time.sleep(15)
 
     # Switch to the new window
     new_window = driver.window_handles[1]
@@ -250,13 +268,13 @@ def fill_and_download(driver, constants):
 
     # 3. Click the PNG option to reveal the dropdown
     time.sleep(2)
-    png_button = WebDriverWait(driver, 30).until(
+    WebDriverWait(driver, 30).until(
         EC.element_to_be_clickable((By.XPATH, "//div[contains(text(), 'PNG')]"))
     ).click()
 
     # 4. Select the PDF Print option
     time.sleep(2)
-    pdf_print_button = WebDriverWait(driver, 30).until(
+    WebDriverWait(driver, 30).until(
         EC.element_to_be_clickable((By.XPATH, "//div[contains(text(), 'PDF Print')]"))
     ).click()
     print("Selected PDF Print option.")
@@ -268,15 +286,23 @@ def fill_and_download(driver, constants):
     ).click()
     print("Initiated download.")
 
-    time.sleep(60)  # Wait for the download to complete
+    # Wait for the download to complete and rename the file
+    downloaded_files = wait_for_download(download_dir)
+    if not downloaded_files:
+        print("No files were downloaded.")
+        return
+
+    # Close the driver after download completes
+    print("Closing the driver...")
+    driver.quit()
 
 def main():
     env.load_dotenv()
-    constants = set_up_constants()
-    driver = set_up_driver()
-    # googleLogin(driver, constants)
-    emailLogin(driver,constants)
-    fill_and_download(driver, constants)
-    driver.quit()
+    constants_instance = set_up_constants()
+    driver, download_dir = set_up_driver()
+    # Uncomment one of the following login methods as needed:
+    # googleLogin(driver, constants_instance)
+    emailLogin(driver, constants_instance)
+    fill_and_download(driver, constants_instance, download_dir)
 
-main()    
+main()
